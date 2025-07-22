@@ -1,436 +1,336 @@
 #pragma once
-#include "snooze.h"
-#include "ui.h"
-#include "e4defs.h"
-#include <windows.h>
-#include "sloputils.h"
+#include "e4audio.h"
 
-Uint32 start_time;
-Uint32 last_frame;
+// Random opp bugs which I dont want to deal with yet
+// NFD opening crashes if file not selected
+// int_to_string
 
-bool fileDropdownSelected = 0;
+nfdchar_t* tempSamplePath = NULL;
+nfdchar_t* workingSamplePath = NULL;
 
-int e4_openedOutputDevices[E4_OUT_CHANNELS] = { 0 };
-Uint32 e4_numOpenedOutputDevices = 0;
+float channelBoxScroll = 0;
+float channelsVisible = 5;
+float pastSecondsVisible = 1;
+float futureSecondsVisible = 10;
 
-const char* placeholderProjectName = "placeholder";
-
-//Right now...what to work on? Live project vs. fixed project..difference?
-/*
-PRIORITIES
-Functions to create a new WAV file, open a file, write to that file
-Functions to create a project w/ WAV file(s) associated and w/ other project necessities
-i.e. links to samples, name of project, dumb stuff like that...
+HMM_Vec4 pause_color = {0};
 
 
+// Glitching at last second - low priority fix.
+float e4_audBlockPctStart(e4_QueueFlag* queueFlag) {
+    return(e4_clamp((pastSecondsVisible+((float)queueFlag->counterToQueueAt - (float)counter_unpaused)/(float)staticPerfFreq)/(pastSecondsVisible+futureSecondsVisible), 0, 1));
+}
 
-*/
+float e4_audBlockPctEnd(e4_QueueFlag* queueFlag) {
+    return(e4_clamp((pastSecondsVisible+((float)queueFlag->totalBytes)/(44100*2*2)+((float)queueFlag->counterToQueueAt-(float)counter_unpaused)/((float)staticPerfFreq))/(pastSecondsVisible+futureSecondsVisible),0,1));
+}
+
+void e4_initSessionMode() {
+    e4_mode = e4_SESSION_MODE;
+}
+
+// this shit hella scuffed..
+void e4_loadBox_NewSession_File_Caption() {
+    snzu_boxNew("newSession");
+    snzu_boxSetDisplayStr(&ui_labelFont, ui_colred,"New Session");
+    snzu_boxSetSizeFitText(5);
+    // create new Windows file here
+    snzu_Interaction* newSessionInter = SNZU_USE_MEM(snzu_Interaction, "newSessionInter");
+    snzu_boxSetInteractionOutput(newSessionInter, SNZU_IF_HOVER | SNZU_IF_MOUSE_BUTTONS);
+}
+void e4_loadBox_OpenSession_File_Caption() {
+    snzu_boxNew("openSession");
+    snzu_boxSetDisplayStr(&ui_labelFont, ui_colred,"Open Session");
+    snzu_boxSetSizeFitText(5);
+    snzu_Interaction* openSessionInter = SNZU_USE_MEM(snzu_Interaction, "openSessionInter");
+    snzu_boxSetInteractionOutput(openSessionInter, SNZU_IF_HOVER | SNZU_IF_MOUSE_BUTTONS);
+    if (openSessionInter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
+        nfdchar_t* path = NULL;
+        nfdresult_t result = NFD_OpenDialog(&path, NULL, 0, NULL);
+        if (result != NFD_OKAY) {
+            printf("NFD stuff is not okay :(\n");
+        }
+        printf(path);
+        free(path);
+        // fixme this gets changed with my improvements in menus
+        e4_initSessionMode();
+        
+    }
+}
+void e4_loadBox_Exit_File_Caption() {
+    snzu_boxNew("exit");
+    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"Exit");
+    snzu_boxSetSizeFitText(5);
+    snzu_Interaction* exitInter = SNZU_USE_MEM(snzu_Interaction, "exitInter");
+    snzu_boxSetInteractionOutput(exitInter, SNZU_IF_HOVER | SNZU_IF_MOUSE_BUTTONS);
+    if (exitInter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
+        for (int i = 0; i < 64; i++) {
+            // If you see this it means you have to make e4_quit() a thing.
+            free(sampleList[i]);
+        }
+        snz_quit();
+    }
+}
+void e4_loadBox_FileDropdown_Caption(void* config) {
+    SNZ_ASSERT(config==NULL,"Config wasn't null for some reason");
+
+    snze_easyBox("fileDropdownMenu",0,0.12,0.05,0.2,ui_collightgray);
+    snzu_boxSetBorder(1,ui_colblack);
+    snzu_boxScope() {
+        e4_loadBox_NewSession_File_Caption();
+        e4_loadBox_OpenSession_File_Caption();
+        e4_loadBox_Exit_File_Caption();
+    }
+    snzu_boxOrderChildrenInRowRecurse(5,SNZU_AX_Y,SNZU_ALIGN_LEFT);
+}
 
 
-//Make sure this whole struct thing works? e4FIXME
-//Also make sure no input/output infinite loop catastrophe
+void e4_channelAudInpConnectBox(void* config) {
 
-// Debugging can be set true/false in sloputils
-
-//   Should be consistent everywhere but: output loaded before input, output
-// allocated 0-7 in main module, input allocated 8-15
+    HMM_Vec4 posVec = ((struct {HMM_Vec4 posVec; int loadOrder;}*)config)->posVec;
+    int loadOrder = ((struct {HMM_Vec4 posVec; int loadOrder;}*)config)->loadOrder;
 
 
+    // Next step: make sure this is loading in the right place. Rn its not.
+    // Ask rob about absolute start/end values, snzu_boxNewF, & other issues.
+    snze_easyBox("indrop",0.9,1,posVec.W/(_snzu_instance->treeParent.end.Y),posVec.W/(_snzu_instance->treeParent.end.Y)+0.1,ui_collightgray);
+    snzu_boxClipChildren(true);
+    snzu_boxScope() {
+        for(int i = 0; i < SDL_GetNumAudioDevices(0); i++) {
+            snze_easyBoxDisp(int_to_string(i), 0, 1, 0, 0.2, ui_colgray, SDL_GetAudioDeviceName(i, 0));
+            snzu_boxSetSizeFitText(0.2);
+            snzu_Interaction* inter = SNZU_USE_MEM(snzu_Interaction, "inter");
+            snzu_boxSetInteractionOutput(inter, SNZU_IF_MOUSE_BUTTONS | SNZU_IF_HOVER);
+            if (inter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
+                SNZ_ASSERT(activeOutputDevices[i]!=NULL, "Connected channel to inactive device.");
+                activeOutputDevices[i]->isChannelConnected[loadOrder] = 1;
+                snzu_boxSetColor(ui_colgreen);
+            }
+        }
+        snzu_boxOrderChildrenInRowRecurse(0.02,SNZU_AX_Y,SNZU_ALIGN_LEFT);
+    }
+}
 
-void e4_reloadFilepathBin(const char* folderPath) {
-    printf("Loading filepath bin\n");
-    // e4FIXME NEED NEED NEED TO COME BACK TO FREE MEMORY
-    //e4_freeBin(&filepathBin);
-
-    //Add the filepaths
-
-    loadFilenamesToMainBin(folderPath);
+void e4_menu_deviceBox(void* config) {
+    SNZ_ASSERT(config==NULL,"Config wasn't null for some reason");
+    snze_easyBox("devicesbox", 0.25, 0.5, 0.05, 0.2, ui_collightgray);
+    snzu_boxClipChildren(true);
     
-    //Free memory at some point
-}
-
-typedef struct {
-    bool outputsTo[E4_NUM_NODES];
-    bool inputsFrom[E4_NUM_NODES];
-    enum e4_Nodetype nodetype;
-    FILE* audioFile;
-    SDL_AudioSpec desiredAudioSpec;
-    SDL_AudioSpec* obtainedAudioSpec;
-    int nodeID;
-    const char* name;
-} e4_AudioNode;
-
-// Make sure file works here / More stuff to do here
-e4_AudioNode e4_createAudioNode() {
-    e4_AudioNode tempNode;
-    for (int i = 0; i < E4_NUM_NODES; i++) {
-        tempNode.outputsTo[i] = 0;
-        tempNode.inputsFrom[i] = 0;
-        tempNode.nodetype = e4UNSET;
-        tempNode.audioFile = NULL;
-        tempNode.name = "NA";
-        tempNode.nodeID = i;
+    snzu_boxScope() {
+        for(int i = 0; i < SDL_GetNumAudioDevices(0); i++) {
+            HMM_Vec4 dispcol = HMM_V4(1,0.75,0.75,1);
+            if (activeOutputDevices[i]!=NULL) {
+                dispcol = HMM_V4(0.75,1,0.75,1);
+            }
+            snze_easyButton(SDL_GetAudioDeviceName(i, 0),HMM_V4(0,1,0,1),dispcol,SDL_GetAudioDeviceName(i, 0)) {
+                printf("Attempting to activate device ");
+                printf(SDL_GetAudioDeviceName(i, 0));
+                printf(" with loadorder %d.\n", i);
+                e4_activateOutputDevice(SDL_GetAudioDeviceName(i, 0));
+            }
+            snzu_boxSetSizeFitText(5);
+        }
     }
-    return tempNode;
+    snzu_boxOrderChildrenInRowRecurse(5, SNZU_AX_Y, SNZU_ALIGN_LEFT);
+    snzu_boxSetBorder(1,ui_colblack);
 }
 
-e4_AudioNode e4_mainModule[E4_NUM_NODES];
-void e4_createMainModule() {
-    for (int i = 0; i < E4_NUM_NODES; i++) {
-        e4_mainModule[i] = e4_createAudioNode();
+void e4_MENU_sessionDrop(void* config) {
+    SNZ_ASSERT(config==NULL,"Config wasn't null for some reason");
+    snze_easyBox("sessionDropM", 0.1, 0.25, 0.05, 0.2, HMM_V4(0.75,0.75,0.75,1));
+    snzu_boxSetBorder(1,ui_colblack);
+    snzu_boxScope() {
+        snze_easyButton("addOutDevice", HMM_V4(0, 1, 0, 1), HMM_V4(0, 0, 0, 0), "Add Output Device") {
+            snze_openMenu(e4_menu_deviceBox, NULL, 1);
+        }
+        snzu_boxSetSizeFitText(5);
+
+        snze_easyButton("addInDevice", HMM_V4(0, 1, 0, 1), HMM_V4(0, 0, 0, 0), "Add Input Device") {
+            snze_closeMenuPast(0);
+        }
+        snzu_boxSetSizeFitText(5);
+
+        snze_easyButton("addChannel", HMM_V4(0, 1, 0, 1), HMM_V4(0, 0, 0, 0), "Add Channel") {
+            e4_addChannel();
+            snze_closeMenuPast(0);
+        };
+        snzu_boxSetSizeFitText(5);
     }
-    e4_debug("Main module created");
+    snzu_boxOrderChildrenInRowRecurse(5,SNZU_AX_Y,SNZU_ALIGN_LEFT);
 }
 
-//flags for debugging
-bool PRINT_FRAMETIME = 0;
-//end flags
+void e4_MENU_sampleDrop(void* config) {
+    SNZ_ASSERT(config==NULL,"Config wasn't null for some reason");
+    snze_easyBox("sampleDD", 0.2, 0.35, 0.05, 0.2, ui_collightgray);
+    snzu_boxSetBorder(1, ui_colblack);
+    snzu_boxScope() {
+        snze_easyButton("sampleAdd", HMM_V4(0, 1, 0, 1), ui_coltransparent, "Add Sample") {
+            nfdresult_t result = NFD_OpenDialogU8(&tempSamplePath, NULL, 0, NULL);
+            if (result != NFD_OKAY) {printf("NFD stuff is not okay :(\n");}
+            e4_loadSample(tempSamplePath);
+        }
+        snzu_boxSetSizeFitText(5);
 
-void e4_printFrametime() {
-    if (PRINT_FRAMETIME) {
-        Uint32 now = SDL_GetTicks();
-        printf("Frame length: %d milliseconds\n", (now - last_frame));
-        printf("Elapsed time: %.3f seconds\n", (now - start_time) / 1000.0f);
-        last_frame = now;
+        snze_easyButton("sampleFolderAdd", HMM_V4(0, 1, 0, 1), ui_coltransparent, "Select Working Folder") {
+            nfdresult_t result = NFD_PickFolderU8(&workingSamplePath, NULL);
+            if (result != NFD_OKAY) {printf("NFD stuff is not okay :(\n");}
+        }
+        snzu_boxSetSizeFitText(5);
     }
+    snzu_boxOrderChildrenInRowRecurse(5, SNZU_AX_Y, SNZU_ALIGN_LEFT);
 }
 
+void e4_loadSampleWorkbench() {
+    snze_easyBox("SampleWorkbench",0.1,0.9,0.1, 0.3, ui_collightblue);
+    snzu_boxScope() {
+        
 
-void e4_loadTestbox() {
-    snzu_boxNew("testbox");
-    snzu_boxSetSizePctParent(0.5, SNZU_AX_X);
-    snzu_boxSetSizePctParent(0.5, SNZU_AX_Y);
-    snzu_boxSetColor(ui_colgray);
-    e4_debug("Loaded testbox");
-}
-void e4_loadInputTitleBox() {
-    snzu_boxNew("titleinput");
-    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"Input devices:");
-    snzu_boxSetSizeFitText(0);
-}
-void e4_loadOutputTitleBox() {
-    snzu_boxNew("titleoutput");
-    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"Output devices:");
-    snzu_boxSetSizeFitText(0);
-}
-void e4_loadFilesTitleBox() {
-    snzu_boxNew("titlemusicfiles");
-    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"Available files:");
-    snzu_boxSetSizeFitText(0);
-}
-
-bool e4_fileFails(FILE* file) {
-    if (file == NULL) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-//singleChannel = callback audio from only the first channel found
-//Remember if you want to use multiple modules to implement that
-void e4_nodeCallbacks(int nodeID, Uint8* stream, int len, bool singleChannel) {
-    bool callbackSuccess = false;
-    for (int i = 0; i < E4_NUM_NODES; i++) {
-        if (e4_mainModule[nodeID].inputsFrom[i]) {
-            if (e4_mainModule[i].outputsTo[nodeID]) {
-                if (e4_mainModule[i].nodetype==e4OUTPUT) {
-                    printf("e4_nodeCallbacks error: output device received callback\n");
-                } else if (e4_mainModule[i].nodetype==e4INPUT){
-                    printf("e4_nodeCallbacks error: input devices not implemented\n");
-                } else if (e4_mainModule[i].nodetype==e4FILE){
-                    //Implement this
-                    if (e4_fileFails(e4_mainModule[i].audioFile)) {
-                        printf("e4_nodeCallbacks: accessing audio file failed\n");
-                        break;
-                    }
-                    size_t bytesRead = fread(stream, 1, len, e4_mainModule[i].audioFile);
-                    if (bytesRead < (size_t)len) {
-                        memset(stream + bytesRead, 0, len - bytesRead);
-                        //Perhaps implement something for when we encounter silence?
-                        printf("e4_nodeCallbacks warning: added silence to incomplete callback\n");
-                    }
-                    callbackSuccess = true;                   
-                    if (singleChannel) {
-                        break;
-                    }
-                } else if (e4_mainModule[i].nodetype==e4PURE) {
-                    printf("e4_nodeCallbacks error: pure nodes not yet implemented\n");
-                } else {
-                    printf("e4_nodeCallbacks error: nodetype unset or erratic\n");
-                }
+        for(int i = 0; i < Total_Samples; i++) {
+            if(sampleList[i]!=NULL) {
+                snze_easyBoxDisp(int_to_string(i), i/16.0f, (i+1)/16.0f, 0.5, 1, HMM_V4(0,0,1,1),int_to_string(i));
             } else {
-                //May desire outputting nodes 
-                printf("e4_nodeCallbacks warning: one-sided link\n");
-            }
-        }
-    }
-    if (!callbackSuccess) {
-        printf("e4_nodeCallbacks error: callback streamed nothing");
-    }
-}
-
-//Must open the audio device with said userdata, e4FIXME
-void e4_outputDeviceCallback(void* userdata, Uint8* stream, int len) {
-    int* nodeIDP = (int*)userdata;
-    int nodeID = *nodeIDP;
-    e4_nodeCallbacks(nodeID, stream, len, 1);
-}
-
-void e4_Open_Playback_Device(const char* deviceName) {
-    //Code here may be a little shoddy, make sure it fully works
-    if (e4_numOpenedOutputDevices < E4_OUT_CHANNELS) {
-        int i = 0;
-        while (e4_openedOutputDevices[i] == 0) {
-            i++;
-        }
-        //Add it to module
-        e4_mainModule[i].nodetype = e4OUTPUT;
-        e4_mainModule[i].nodeID = i;
-        //Can change these later to be able to specialize more
-        e4_mainModule[i].desiredAudioSpec.callback = e4_outputDeviceCallback;
-        e4_mainModule[i].desiredAudioSpec.freq = 44100;
-        e4_mainModule[i].desiredAudioSpec.channels = 2;
-        e4_mainModule[i].desiredAudioSpec.samples = 4096;
-        e4_mainModule[i].desiredAudioSpec.userdata = &e4_mainModule[i].nodeID;
-
-        e4_openedOutputDevices[i] = SDL_OpenAudioDevice(deviceName, 0, &e4_mainModule[i].desiredAudioSpec, e4_mainModule[i].obtainedAudioSpec, 0);
-        e4_numOpenedOutputDevices++;
-    } else {
-        //Make better error system
-        printf("e4: Can't open new playback device, already max (8) open!\n");
-    }
-    //write stuff here
-}
-
-void e4_Check_For_Removed_Playback_Devices() {
-    // Perhaps implement check that the removed device is output & not input, e4FIXME
-    // Only works for output at the moment.
-    if (!(e4_removedDeviceID==-1)) {
-        for(int i = 0; i < E4_OUT_CHANNELS; i++) {
-            if (e4_removedDeviceID==e4_openedOutputDevices[i]) {
-                SDL_CloseAudioDevice(e4_removedDeviceID);
-                e4_numOpenedOutputDevices--;
-                e4_openedOutputDevices[i] = 0;
-                e4_removedDeviceID = -1;
-            }
-            //Maybe could do better error msging here, e4FIXME
-            if ((i == (E4_OUT_CHANNELS-1))&!(e4_removedDeviceID==-1)) {
-                printf("e4: Warning/error, expected an output device to be removed but wasn't properly dealt with.\n");
+                break;
             }
         }
     }
 }
 
-// Is called to reload the nodes connected to SDL output devices.
-// Perhaps implement error handling here?
-void e4_reloadOutputNodes() {
-    int numOutputDevices = SDL_GetNumAudioDevices(0);
-    if(numOutputDevices > 8) {
-        numOutputDevices = 8;
-    }
 
-    for (int i = 0; i < 8; i++) {
-        e4_mainModule[i] = e4_createAudioNode();
-    }
-
-    for (int i = 0; i < numOutputDevices; i++) {
-        const char* deviceName = SDL_GetAudioDeviceName(i, 0);
-        e4_mainModule[i].nodetype = e4OUTPUT;
-        SDL_GetAudioDeviceSpec(i, 0, &e4_mainModule[i].desiredAudioSpec);
-        //This node id is kinda useless... you need the ID to access this in the array anyway
-        //Maybe it will have some strange edge use where we don't know the node we're using?
-        e4_mainModule[i].nodeID = i;
-        e4_mainModule[i].name = deviceName;
-    }
-}
-
-void e4_reloadInputNodes() {
-    int numInputDevices = SDL_GetNumAudioDevices(1);
-    if(numInputDevices > 8) {
-        numInputDevices = 8;
-    }
-
-    for (int i = 0; i < 8; i++) {
-        e4_mainModule[i+8] = e4_createAudioNode();
-    }
-
-    for (int i = 0; i < numInputDevices; i++) {
-        const char* deviceName = SDL_GetAudioDeviceName(i, 1);
-        e4_mainModule[i+8].nodetype = e4INPUT;
-        SDL_GetAudioDeviceSpec(i, 1, &e4_mainModule[i+8].desiredAudioSpec);
-        //This node id is kinda useless... you need the ID to access this in the array anyway
-        //Maybe it will have some strange edge use where we don't know the node we're using?
-        e4_mainModule[i+8].nodeID = i+8;
-        e4_mainModule[i+8].name = deviceName;
-        e4_debug("Set an output name:");
-        //printf(deviceName);
-    }
-}
-
-void e4_loadOutputDeviceSnzBoxes() {
-    e4_debug("Starting output device load");
-
-    for(int i = 0; i < E4_OUT_CHANNELS; i++) {
-        if (e4_mainModule[i].nodetype==e4OUTPUT) {
-            snzu_boxNew(e4_mainModule[i].name);
-            snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack, e4_mainModule[i].name);
-            snzu_boxSetSizeFitText(0);
-
-            snzu_Interaction* inter = SNZU_USE_MEM(snzu_Interaction, "inter");
-            snzu_boxSetInteractionOutput(inter, SNZU_IF_MOUSE_BUTTONS | SNZU_IF_HOVER);
-            bool* const selected = SNZU_USE_MEM(bool, "selected");
-            
-            if(inter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
-                *selected = !*selected;
-            }
-            if(*selected) {
-                snzu_boxSetBorder(3, ui_colblack);
-            }
-        } else if (!(e4_mainModule[i].nodetype==e4UNSET)) {
-            printf("e4: Error: Node allocated for output has wrong nodetype\n");
-        }
-    }
-    e4_debug("Output device loading ended");   
-}
-
-void e4_loadInputDeviceSnzBoxes() {
-    e4_debug("Starting input device load");
-    //printf(e4_mainModule[8].name);
-    for(int i = 0; i < E4_IN_CHANNELS; i++) {
-        if (e4_mainModule[i+8].nodetype==e4INPUT) {
-            //printf("Creating node for ");
-            //printf(e4_mainModule[i+8].name);
-            //printf("\n");
-            snzu_boxNew(e4_mainModule[i+8].name);
-            snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack, e4_mainModule[i+8].name);
-            snzu_boxSetSizeFitText(0);
-
-            snzu_Interaction* inter = SNZU_USE_MEM(snzu_Interaction, "inter");
-            snzu_boxSetInteractionOutput(inter, SNZU_IF_MOUSE_BUTTONS | SNZU_IF_HOVER);
-            bool* const selected = SNZU_USE_MEM(bool, "selected");
-            
-            if(inter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
-                *selected = !*selected;
-            }
-            if(*selected) {
-                snzu_boxSetBorder(3, ui_colblack);
-            }
-        } else if (!(e4_mainModule[i+8].nodetype==e4UNSET)) {
-            printf("e4: Error: Node allocated for input has wrong nodetype");
-        }
-    }
-    e4_debug("Input device loading ended");    
-}
-// void e4_Set_File_As_Node(const char* filename, int nodeNum) {
-
-
-
-void e4_openLiveSession() {
-
-}
-
-// writing this function is a big work in progress
-
-// void e4_createNewLiveSession(const char* liveSessionName) {
-//     // Check if session name is same, append if it is
-//     const char* finalSessionName; //syntax, set here
-//     // Create WAV file for channel 1
-//     // Create settings doc
-//     e4_openLiveSession(finalSessionName);
-// }
-
-// This should be obsoleted
 void e4_init() {
-    e4_createMainModule();
-    e4_reloadFilepathBin("res\\music");
-    e4_reloadOutputNodes();
-    e4_reloadInputNodes();
+    staticPerfFreq = SDL_GetPerformanceFrequency();
+    session_start_time = SDL_GetPerformanceCounter();
+    last_frame = session_start_time;
+    // Visual bug when initialized, change this
+    pause_color = ui_colgreen;
+    for(int i = 0; i < 8; i++) {
+        menuStruct.func[i] = nothing;
+        menuStruct.config[i] = NULL;
+    }
+    // only here for debugging
+    e4_activateOutputDevice(SDL_GetAudioDeviceName(0,0));
+    e4_addChannel();
+
+
+    e4_initSessionMode();
+
+}
+
+void e4_quit() {
+    // Freeing stuff that needs to be freed should happen here.
+    snz_quit();
 }
 
 void e4_main() {
-    // This should be exactly one loop of the program!
-    /*
-    Pseudocode = in what order should things be handled?:
-        snz updating, if necessary
 
-        File managing: opening, creating, closing projects.
-        // if project closed, make sure to clear its interactions to avoid weird stuff
-
-        Lesser file managing.
-
-        Utility stuff
-
-        Editing of the file itself.
-
-        
-
-    */
-
-    // Snz updating
-
-    //Caption bar
-    snzu_boxNew("Caption");
-    snzu_boxSetSizePctParent(0.05,SNZU_AX_Y);
-    snzu_boxSetSizePctParent(1,SNZU_AX_X);
-    snzu_boxSetColor(ui_colgray);
+    // Caption bar
+    snze_easyBox("Caption",0,1,0,0.05,ui_colgray);
     snzu_boxScope() {
-        snzu_boxNew("FileDropdown");
-        snzu_boxSetSizePctParent(1,SNZU_AX_Y);
-        snzu_boxSetSizePctParent(0.1,SNZU_AX_X);
-        snzu_boxSetColor(HMM_V4(0.75,0.75,0.75,1));
-        snzu_boxSetDisplayStr(&ui_labelFont,ui_colblack, "File");
-        snzu_Interaction* fileDropdownInter = SNZU_USE_MEM(snzu_Interaction, "fileDropdownInter");
-        snzu_boxSetInteractionOutput(fileDropdownInter, SNZU_IF_HOVER | SNZU_IF_MOUSE_BUTTONS);
-        snzu_boxScope() {
-            if (fileDropdownInter->mouseActions[SNZU_MB_LEFT]==SNZU_ACT_DOWN) {
-                fileDropdownSelected = !fileDropdownSelected;
-            }
-            if (fileDropdownSelected) {
-                snzu_boxNew("fileDropdownMenu");
-                snzu_boxSetSizePctParent(5,SNZU_AX_Y);
-                snzu_boxSetSizePctParent(3,SNZU_AX_X);
-                snzu_boxSetSizeFromEndAx(SNZU_AX_Y,(snzu_boxGetSize().Y)*0.8);
-                snzu_boxSetColor(HMM_V4(0.75,0.75,0.75,1));
-                snzu_boxSetBorder(1,ui_colblack);
-                snzu_boxScope() {
-                    snzu_boxNew("newFile");
-                    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"New File");
-                    snzu_boxSetSizeFitText(5);
-                    // create new Windows file here
+        // File dropdown bar
+        snze_easyButton("File_Dropdown", HMM_V4(0, 0.1, 0, 1), ui_collightgray, "File") {
+            snze_openMenu(e4_loadBox_FileDropdown_Caption, NULL, 0);
+        }
+        snzu_boxSetBorder(1, ui_colblack);
 
-
-                    snzu_boxNew("exit");
-                    snzu_boxSetDisplayStr(&ui_labelFont, ui_colblack,"Exit");
-                    snzu_boxSetSizeFitText(5);
-                    
-                }
-                snzu_boxOrderChildrenInRowRecurse(5,SNZU_AX_Y,SNZU_ALIGN_LEFT);
+        if (e4_mode==e4_SESSION_MODE) {
+            snze_easyButton("SessionDropdown",HMM_V4(0.1,0.2,0,1),ui_collightgray, "Session") {
+                snze_openMenu(e4_MENU_sessionDrop, NULL, 0);
             }
+            snzu_boxSetBorder(1,ui_colblack);
+
+            snze_easyButton("SamplesDD", HMM_V4(0.2,0.3,0,1),ui_collightgray,"Samples") {
+                snze_openMenu(e4_MENU_sampleDrop, NULL, 0);
+            }
+            snzu_boxSetBorder(1,ui_colblack);
+        }
+        // Some goofy stuff with playback.
+        snze_easyButton("ribs", HMM_V4(0.3,0.4,0,1),ui_collightgray,"Ribs!") {
+            e4_queueSampleToChannel(0, 0, counter_unpaused + staticPerfFreq, 500000);
         }
     }
-    // set place and size here...
-    // snzu_Interaction* captionInter = SNZU_USE_MEM(snzu_Interaction, "captionInter");
-    // return(captionInter);
-    // if() {
-    //     snzu_Interaction* fileDropdownInter = e4_loadFileDropdownBar();
-    // }
+
+    e4_loadSampleWorkbench();
+
+    snze_easyBoxDisp("Mode_Indicator", 0.9, 1, 0, 0.05, ui_colgray, e4_modeStr(e4_mode));
     
-    // File managing
-    // opening a new file
-    // Don't know how I will implement the menu yet
-    // need help with the if statements here
-    // Project mode goes here
-    // if (....) {
-    //     // remember this is bool & fix
-    //     e4_createNewLiveSession(placeholderProjectName);
+    if (e4_mode == e4_SESSION_MODE) {
+        snze_easyButton("Pause_Button",HMM_V4(0.9,1, 0.05,0.1), pause_color, NULL) {
+            sessionPaused = !sessionPaused;
+            if(sessionPaused) {pause_color = ui_colred;} else {pause_color = ui_colgreen;}
+        }
 
-    // }
+        // In addition, have other timers.
+        static char nowBuf[12];  // Enough for max 32-bit uint + null terminator
+        snprintf(nowBuf, sizeof(nowBuf), "%f", (double)counter_unpaused/(double)staticPerfFreq);
+        const char* nowStr= nowBuf;
+        snze_easyBoxDisp("timebox", 0.8, 0.9, 0.05, 0.1, ui_collightgray, nowStr);
+        snzu_boxSetBorder(3,ui_colblack);
+        
+        snze_easyBoxNoCol("Channel_Parent", 0, 1, 0.3, 1);
+        snzu_boxClipChildren(true);
+        snzu_boxScope() {
+            for(int actChan = 0; actChan < Total_Channels; actChan++) {
 
-    // Utility stuff
+                e4_Channel* activeChnlPtr = channelList[actChan];
 
-    // Editing of the file itself
+                if (activeChnlPtr!=NULL) {
+                    // please fix the slopcode
+                    // Introduce scroll
+                    // Channel box
+                    snze_easyBox(int_to_string(actChan),0,1,actChan/channelsVisible,(actChan+1)/channelsVisible,ui_coldarkgray);
+                    snzu_boxClipChildren(true);
+                    snzu_boxScope() {
+                        snze_easyBox("Channel", 0.025, 0.975, 0.005, 0.995, ui_coldarkred);
+                        snzu_boxClipChildren(true);
+                        snzu_boxScope() {
+                            // Herein the sample stuff
+                            // Delete queue flag after!!
+                            for(int qfNum = 0; qfNum < activeChnlPtr->numQueueFlags; qfNum++) {
+                                e4_QueueFlag* queueFlag = activeChnlPtr->queueFlags[qfNum];
+                                if((counter_unpaused + futureSecondsVisible*staticPerfFreq > queueFlag->counterToQueueAt)) {
+                                    snze_easyBox("ribs", e4_audBlockPctStart(queueFlag), e4_audBlockPctEnd(queueFlag), 0.05,0.8,ui_collightgray);
+                                }
+                            }
 
+                            snze_easyBox("bottombar",0,1,0.95,1,ui_colblack);
+                            for(int j = 0; j < (int)(pastSecondsVisible+futureSecondsVisible); j++) {
+                                snze_easyBox(int_to_string(j),(j+1-((double)(counter_unpaused % staticPerfFreq))/(double)staticPerfFreq)/(pastSecondsVisible+futureSecondsVisible)-0.005,(j+1-((double)(counter_unpaused % staticPerfFreq))/(double)staticPerfFreq)/(pastSecondsVisible+futureSecondsVisible)+0.005, 0.9, 0.95, ui_colblack);
+                            }
+                            snze_easyButton("Exit_Button", HMM_V4(0.95, 1, 0, 0.2), ui_colblack, NULL) {
+                                e4_removeChannel(actChan);
+                            }
+                            
+                            snze_easyBoxDisp("id", 0.95, 1, 0.2, 0.4,ui_collightgray, int_to_string(activeChnlPtr->ID));
+                        }
+                        snze_easyButton("devConnect", HMM_V4(0.975,1,actChan*0.2,actChan*0.2+0.2), ui_colgray, "In") {
+                            // When to free?
+                            // Scary struct pointer stuff!
+                            struct {HMM_Vec4 posVec; int loadOrder;}* configPtr = malloc(sizeof(struct {HMM_Vec4 posVec; int loadOrder;}));
+                            
+                            configPtr->posVec.X = _snzu_instance->selectedBox->start.X;
+                            configPtr->posVec.Y = _snzu_instance->selectedBox->end.X;
+                            configPtr->posVec.Z = _snzu_instance->selectedBox->start.Y;
+                            configPtr->posVec.W = _snzu_instance->selectedBox->end.Y;
+                            configPtr->loadOrder = actChan;
+                            
+                            
+                            snze_openMenu(e4_channelAudInpConnectBox, configPtr, 0);
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+            snze_easyBox("timebar",0.025+(0.975-0.025)*0.1-0.001,0.025+(0.975-0.025)*0.1+0.001,0,1,HMM_V4(0.5,0.5,0.5,0.5));
+            
+        }
+    }
+    // Handle menu stuff down here.
 
+    for(int i = 0; i < 8; i++) {
+        menuStruct.func[i](menuStruct.config[i]);
+    }
 
+    // to make this consistent, perhaps handle pausing / unpausing at the beginning?
+    // Surely the latency cannot matter so much?
+    e4_updateFrametime();
 }

@@ -25,12 +25,10 @@ void main_init(snz_Arena* scratch, SDL_Window* window) {
     ui_init(&main_fontArena, scratch);
     e4_init();
     
-    start_time = SDL_GetTicks();
-    last_frame = start_time;
 }
 
 void main_loop(float dt, snz_Arena* frameArena, snzu_Input og_frameInputs, HMM_Vec2 og_screenSize) {
-    
+    sloppySloppySloprena = frameArena;
 
     // See if frame can be embedded within e4_main loop to only be called on some loops?
     // So it doesn't slow down the faster processing rate of e4_main
@@ -47,7 +45,7 @@ void main_loop(float dt, snz_Arena* frameArena, snzu_Input og_frameInputs, HMM_V
     snzu_frameDrawAndGenInteractions(og_frameInputs, uiVP);
     
     //Report frame length
-    e4_printFrametime();
+    
 }
 
 int main() {

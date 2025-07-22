@@ -18,6 +18,11 @@ HMM_Vec4 ui_colgray = {0};
 HMM_Vec4 ui_colblack = {0};
 HMM_Vec4 ui_colred = {0};
 HMM_Vec4 ui_colgreen = {0};
+HMM_Vec4 ui_collightgray = {0};
+HMM_Vec4 ui_coldarkgray = {0};
+HMM_Vec4 ui_coldarkred = {0};
+HMM_Vec4 ui_coltransparent = {0};
+HMM_Vec4 ui_collightblue = {0};
 
 // loads in RGBA, asserts on failue.
 snzr_Texture ui_texFromFile(const char* path) {
@@ -43,6 +48,11 @@ void ui_init(snz_Arena* fontArena, snz_Arena* scratch) {
     ui_colblack = HMM_V4(0,0,0,1);
     ui_colred = HMM_V4(1,0,0,1);
     ui_colgreen = HMM_V4(0,1,0,1);
+    ui_collightgray = HMM_V4(0.75,0.75,0.75,1);
+    ui_coldarkgray = HMM_V4(0.25,0.25,0.25,1);
+    ui_coldarkred = HMM_V4(0.5,0,0,1);
+    ui_coltransparent = HMM_V4(0,0,0,0);
+    ui_collightblue = HMM_V4(0.75,0.75,1,1);
 }
 
 float ui_hoverAnim(snzu_Interaction* inter) {

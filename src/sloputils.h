@@ -3,57 +3,29 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "snooze.h"
+
+
+// !!!SLOP SLOP SLOP!!! SLOP ALERT!!! SLOP SLOP SLOP SLOP SLOP
 
 bool debugging = false;
-typedef struct {
-    wchar_t deviceNames[8*MAX_PATH];
-    int nameLens[8];
-} e4_FilepathBin;
 
-e4_FilepathBin e4_mainFilepathBin;
+snz_Arena* sloppySloppySloprena = NULL;
+const char* int_to_string(int value) {
+    return snz_arenaFormatStr(sloppySloppySloprena, "%d", value);
+}
 
-void loadFilenamesToMainBin(const char *folderPath) {
-    
-    printf("Starting to load filenames...\n");
-    WIN32_FIND_DATA findData;
-    HANDLE hFind = INVALID_HANDLE_VALUE;
 
-    // Build the search path with wildcard (*.*)
-    char searchPath[MAX_PATH];
-    snprintf(searchPath, MAX_PATH, "%s\\*.*", folderPath);
+void copy_filename_after_backslash(char buffer[64], const char* filepath) {
+    // Find the last backslash in the filepath
+    const char* last_backslash = strrchr(filepath, '\\');
 
-    hFind = FindFirstFile(searchPath, &findData);
-    
-    if (hFind == INVALID_HANDLE_VALUE) {
-        fprintf(stderr, "FindFirstFile failed (%lu)\n", GetLastError());
-        return;
-    }
-    printf("Got to this point...\n");
-    int filenum = 0;
-    do {
-        // Skip "." and ".." entries
-        if (strcmp(findData.cFileName, ".") == 0 || strcmp(findData.cFileName, "..") == 0)
-            continue;
+    // Pointer to the part after the last backslash, or start of string if none found
+    const char* filename = last_backslash ? last_backslash + 1 : filepath;
 
-        // Check if it's a regular file
-        if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            if (filenum < 8) {
-                for (size_t i = 0; i < strlen(findData.cFileName); i++) {
-                    e4_mainFilepathBin.deviceNames[filenum*MAX_PATH+i] = findData.cFileName[i];
-                }
-                e4_mainFilepathBin.nameLens[filenum] = strlen(findData.cFileName);
-                filenum++;
-            }
-            printf("File: %s\\%s\n", folderPath, findData.cFileName);
-            
-        }
-    } while (FindNextFile(hFind, &findData) != 0);
-
-    if (GetLastError() != ERROR_NO_MORE_FILES) {
-        fprintf(stderr, "FindNextFile error (%lu)\n", GetLastError());
-    }
-
-    FindClose(hFind);
+    // Copy to buffer safely, leaving room for null terminator
+    strncpy(buffer, filename, 63);
+    buffer[63] = '\0';  // Ensure null termination
 }
 
 void e4_debug(const char* message) {
@@ -64,8 +36,3 @@ void e4_debug(const char* message) {
     }
 }
 
-void wideprint(wchar_t* name, int length, int place) {
-    for(int i = 0; i < length; i++) {
-        wprintf(L"%lc",name[place*MAX_PATH + i]);
-    }
-}
