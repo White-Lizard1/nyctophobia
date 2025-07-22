@@ -5,9 +5,6 @@
 
 snzr_Font ui_labelFont = { 0 };
 
-HMM_Vec4 ui_colorOrbit = { 0 };
-float ui_thicknessOrbit = 1;
-
 HMM_Vec4 ui_colorText = { 0 };
 HMM_Vec4 ui_colorAccent = { 0 };
 HMM_Vec4 ui_colorBackground = { 0 };
@@ -16,6 +13,11 @@ float ui_hoverAnimSpeed = 20;
 
 float ui_thicknessUiLines = 1;
 float ui_padding = 5;
+
+HMM_Vec4 ui_colgray = {0};
+HMM_Vec4 ui_colblack = {0};
+HMM_Vec4 ui_colred = {0};
+HMM_Vec4 ui_colgreen = {0};
 
 // loads in RGBA, asserts on failue.
 snzr_Texture ui_texFromFile(const char* path) {
@@ -34,10 +36,13 @@ void ui_init(snz_Arena* fontArena, snz_Arena* scratch) {
 
     ui_colorText = HMM_V4(230 / 255.0, 244 / 255.0, 255 / 255.0, 1);
     ui_colorBackground = HMM_V4(9 / 255.0, 4 / 255.0, 3 / 255.0, 1.0f);
-    ui_colorOrbit = ui_colorText;
 
     ui_colorAccent = HMM_V4(0.18, 0.20, 0.4, 1.0f);
     ui_colorHoveredBackground = HMM_V4(0.4, 0.3, 0.07, 1.0f);
+    ui_colgray = HMM_V4(0.5,0.5,0.5,1);
+    ui_colblack = HMM_V4(0,0,0,1);
+    ui_colred = HMM_V4(1,0,0,1);
+    ui_colgreen = HMM_V4(0,1,0,1);
 }
 
 float ui_hoverAnim(snzu_Interaction* inter) {

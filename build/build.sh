@@ -1,4 +1,4 @@
-#!/bin/bash
+# !/bin/bash
 
 # gcc -c external/GLAD/src/glad.c -Iexternal/GLAD/include -o out/glad.o -g -Wall
 # echo "GLAD built"

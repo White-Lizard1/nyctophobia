@@ -1,3 +1,5 @@
+// NOTE NOTE NOTE: on lines 767 / 843, I commented out logging for rect and line shaders
+// and also on 2054 the starting main loop log
 #pragma once
 
 /*
@@ -180,6 +182,12 @@ UI COMPONENTS:
 // UTILITIES ==================================================================
 
 // FIXME: vector macro abstraction
+
+//THIS SPACE FOR EXTRA e4 related stuff needed for polling audio events at the same time
+int e4_removedDeviceID = -1;
+//e4 stuff ended
+
+
 
 #define SNZ_MIN(a, b) ((a < b) ? a : b)
 #define SNZ_MAX(a, b) ((a > b) ? a : b)
@@ -758,7 +766,7 @@ static void _snzr_init(snz_Arena* scratchArena) {
 
             "    if (color.a <= 0.01) { discard; }"
             "};";
-        SNZ_LOG("loading rect shader.");
+        //SNZ_LOG("loading rect shader.");
         _snzr_globs.rectShaderId = snzr_shaderInit(vertSrc, fragSrc, scratchArena);
         _snzr_rectShaderLocationsInit(_snzr_globs.rectShaderId);
     }
@@ -834,7 +842,7 @@ static void _snzr_init(snz_Arena* scratchArena) {
             "};";
 
         // FIXME: issues when lines go off screen
-        SNZ_LOG("loading line shader.");
+        //SNZ_LOG("loading line shader.");
         _snzr_globs.lineShaderId = snzr_shaderInit(vertSrc, fragSrc, scratchArena);
     }
 
@@ -2015,7 +2023,9 @@ void snz_main(const char* windowTitle, const char* iconPath, snz_InitFunc initFu
         // initialize SDL and open window
         SNZ_ASSERT(SDL_Init(SDL_INIT_VIDEO) == 0, "sdl initialization failed.");
         SNZ_ASSERT(SDL_GL_LoadLibrary(NULL) == 0, "sdl loading opengl failed.");
+        SNZ_ASSERT(SDL_Init(SDL_INIT_AUDIO)==0, "sdl/e4: audio initialization failed");
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
+        //First is fullscreen second is maximized, switch if you want it switched
         uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
         // uint32_t windowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
         window = SDL_CreateWindow(windowTitle, 100, 100, 700, 500, windowFlags);
@@ -2041,7 +2051,7 @@ void snz_main(const char* windowTitle, const char* iconPath, snz_InitFunc initFu
     _snzr_init(&frameArena);
     snz_arenaClear(&frameArena);
     initFunc(&frameArena, window);
-    SNZ_LOG("End of init, starting main loop.");
+    //SNZ_LOG("End of init, starting main loop.");
     snz_arenaClear(&frameArena);
 
     float prevTime = 0.0;
@@ -2078,9 +2088,11 @@ void snz_main(const char* windowTitle, const char* iconPath, snz_InitFunc initFu
                 if (e.button.clicks == 2 && e.button.button == SDL_BUTTON_LEFT) {
                     uiInputs.doubleClick = true;
                 }
-            }
-        }  // end event polling
-
+            } else if (e.type == SDL_AUDIODEVICEREMOVED) {//HERE ADD e4 AUDIO EVENT POLLING
+                //Will not work if multiple devices removed in same frame - e4FIXME
+                e4_removedDeviceID = e.adevice.which;
+            }  // end event polling
+        }
         int mouseX, mouseY;
         uint32_t mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
         uiInputs.mousePos = HMM_V2(mouseX, mouseY);
